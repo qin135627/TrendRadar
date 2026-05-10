@@ -313,6 +313,7 @@ class BTCMonitor:
                     continue
 
                 consecutive_errors = 0
+                found_active = False
 
                 # 2. 遍历每个事件，检查价格
                 for event in events:
@@ -320,44 +321,70 @@ class BTCMonitor:
                     markets = event.get("markets", [])
 
                     for market in markets:
+                        # 跳过已关闭的子市场
+                        if market.get("closed", False) and not market.get("active", False):
+                            continue
+
                         # 获取 token IDs (Yes 和 No)
                         tokens = market.get("clobTokenIds", [])
-                        outcomes = market.get("outcomes", [])
-                        outcome_prices = market.get("outcomePrices", [])
-
-                        if not outcome_prices or len(outcome_prices) < 2:
+                        if not tokens or len(tokens) < 2:
                             continue
 
-                        try:
-                            yes_price = float(outcome_prices[0]) if outcome_prices[0] else 0
-                            no_price = float(outcome_prices[1]) if outcome_prices[1] else 0
-                        except (ValueError, IndexError):
+                        # 用 CLOB API 获取实时 midpoint 价格
+                        yes_token = tokens[0]
+                        no_token = tokens[1]
+
+                        yes_mid = get_midpoint_prices(yes_token)
+                        no_mid = get_midpoint_prices(no_token)
+
+                        # 如果 CLOB 没返回，fallback 到 Gamma 的快照价格
+                        if yes_mid is None or no_mid is None:
+                            outcome_prices = market.get("outcomePrices", [])
+                            if outcome_prices and len(outcome_prices) >= 2:
+                                try:
+                                    yes_price = float(outcome_prices[0]) if outcome_prices[0] else 0
+                                    no_price = float(outcome_prices[1]) if outcome_prices[1] else 0
+                                except (ValueError, IndexError):
+                                    continue
+                            else:
+                                continue
+                        else:
+                            yes_price = yes_mid
+                            no_price = no_mid
+
+                        # 跳过已结算的（0/1 或 1/0）
+                        if (yes_price >= 0.99 and no_price <= 0.01) or (yes_price <= 0.01 and no_price >= 0.99):
                             continue
 
+                        # 跳过无数据的
                         if yes_price == 0 and no_price == 0:
                             continue
 
+                        found_active = True
+                        market_question = market.get("question", event_title)
                         market_id = market.get("id", market.get("conditionId", "unknown"))
-                        market_status = "active" if market.get("active") else "closed"
                         end_date = market.get("endDate", "")
 
                         # 记录数据
                         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        record_price(now_str, event_title, yes_price, no_price,
-                                    market_status, end_date)
+                        record_price(now_str, market_question, yes_price, no_price,
+                                    "active", end_date)
 
                         # 打印实时状态
                         spread = abs(yes_price - no_price)
-                        bias = "→" if spread < 0.05 else ("↑Yes" if yes_price > no_price else "↓No")
+                        bias = "→" if spread < 0.05 else ("↑Up" if yes_price > no_price else "↓Down")
                         print(
                             f"[{datetime.now().strftime('%H:%M:%S')}] "
-                            f"{event_title[:40]:40s} | "
-                            f"Yes: {yes_price:.3f} | No: {no_price:.3f} | "
+                            f"{market_question[:50]:50s} | "
+                            f"Up: {yes_price:.3f} | Down: {no_price:.3f} | "
                             f"偏差: {spread:.3f} {bias}"
                         )
 
                         # 检查告警
-                        self.check_and_alert(event_title, yes_price, no_price, market_id)
+                        self.check_and_alert(market_question, yes_price, no_price, market_id)
+
+                if not found_active:
+                    print(f"[{datetime.now().strftime('%H:%M:%S')}] 所有市场已结算，等待新市场开盘...")
 
                 time.sleep(CHECK_INTERVAL)
 
