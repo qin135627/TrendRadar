@@ -414,6 +414,104 @@ def analyze_data():
 
 
 # ============================================
+# 快速测试（验证 API 是否可通）
+# ============================================
+
+
+def quick_test():
+    """快速测试 API 连通性"""
+    print("=" * 60)
+    print("  API 连通性测试")
+    print("=" * 60)
+
+    # 测试 1: Gamma API
+    print("\n[测试1] 访问 Gamma API...")
+    try:
+        url = f"{GAMMA_API}/events?limit=3&active=true&closed=false"
+        print(f"  请求: {url}")
+        resp = requests.get(url, timeout=15)
+        print(f"  状态码: {resp.status_code}")
+        data = resp.json()
+        print(f"  返回事件数: {len(data)}")
+        for event in data[:3]:
+            print(f"    - {event.get('title', 'N/A')[:60]}")
+            slug = event.get("slug", "")
+            print(f"      slug: {slug}")
+    except Exception as e:
+        print(f"  ❌ 失败: {e}")
+
+    # 测试 2: 搜索 BTC 相关
+    print("\n[测试2] 搜索 BTC 相关市场...")
+    try:
+        url = f"{GAMMA_API}/events?limit=20&active=true&closed=false"
+        print(f"  请求: {url}")
+        resp = requests.get(url, timeout=15)
+        data = resp.json()
+        print(f"  总事件数: {len(data)}")
+
+        btc_found = []
+        for event in data:
+            title = event.get("title", "").lower()
+            slug = event.get("slug", "").lower()
+            if "btc" in title or "bitcoin" in title or "btc" in slug:
+                btc_found.append(event)
+
+        if btc_found:
+            print(f"  ✅ 找到 {len(btc_found)} 个 BTC 相关事件:")
+            for event in btc_found[:5]:
+                print(f"    - {event.get('title', 'N/A')}")
+                markets = event.get("markets", [])
+                print(f"      markets 数量: {len(markets)}")
+                for m in markets[:2]:
+                    prices = m.get("outcomePrices", [])
+                    outcomes = m.get("outcomes", [])
+                    print(f"      outcomes: {outcomes}, prices: {prices}")
+        else:
+            print("  ⚠️ 未找到 BTC 相关事件")
+            print("  尝试打印所有事件标题:")
+            for event in data:
+                print(f"    - {event.get('title', 'N/A')[:60]}")
+    except Exception as e:
+        print(f"  ❌ 失败: {e}")
+
+    # 测试 3: 直接用 slug 搜索
+    print("\n[测试3] 用 slug 直接搜索 BTC 5分钟...")
+    try:
+        # 尝试几种可能的 slug 格式
+        slugs_to_try = [
+            "btc-updown-5m",
+            "bitcoin-up-or-down-5-minutes",
+        ]
+        for slug in slugs_to_try:
+            url = f"{GAMMA_API}/events?slug_contains={slug}&limit=5"
+            resp = requests.get(url, timeout=15)
+            data = resp.json()
+            if data:
+                print(f"  ✅ slug '{slug}' 找到 {len(data)} 个事件")
+                for event in data[:3]:
+                    print(f"    - {event.get('title', 'N/A')}")
+            else:
+                print(f"  ❌ slug '{slug}' 无结果")
+    except Exception as e:
+        print(f"  ❌ 失败: {e}")
+
+    # 测试 4: CLOB API
+    print("\n[测试4] 访问 CLOB API...")
+    try:
+        url = f"{CLOB_API}/time"
+        print(f"  请求: {url}")
+        resp = requests.get(url, timeout=15)
+        print(f"  状态码: {resp.status_code}")
+        print(f"  响应: {resp.text[:200]}")
+    except Exception as e:
+        print(f"  ❌ 失败: {e}")
+
+    print("\n" + "=" * 60)
+    print("  测试完成！把上面的输出截图发给我")
+    print("=" * 60)
+
+
+# ============================================
 # 入口
 # ============================================
 
@@ -422,6 +520,14 @@ if __name__ == "__main__":
 
     if len(sys.argv) > 1 and sys.argv[1] == "analyze":
         analyze_data()
+    elif len(sys.argv) > 1 and sys.argv[1] == "test":
+        quick_test()
     else:
-        monitor = BTCMonitor()
-        monitor.run()
+        # 默认先跑测试
+        print("提示: 首次运行，先执行 API 测试...\n")
+        quick_test()
+        print("\n\n如果测试通过，再运行:")
+        print("  python polymarket_monitor.py monitor")
+        print("\n按任意键退出...")
+        input()
+
