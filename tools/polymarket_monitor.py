@@ -59,32 +59,53 @@ def fetch_btc_5min_events(limit: int = 10) -> List[Dict]:
     获取 BTC 5分钟市场列表
     返回活跃的 BTC up/down 5min 事件
     """
-    try:
-        # 方法1: 通过搜索关键词
-        url = f"{GAMMA_API}/events"
-        params = {
-            "limit": limit,
-            "active": "true",
-            "closed": "false",
-        }
-        resp = requests.get(url, params=params, timeout=10)
-        resp.raise_for_status()
-        events = resp.json()
+    btc_events = []
 
-        # 过滤 BTC 5分钟市场
-        btc_events = []
-        for event in events:
-            title = event.get("title", "").lower()
-            slug = event.get("slug", "").lower()
-            if ("btc" in title or "bitcoin" in title) and "5 min" in title:
-                btc_events.append(event)
-            elif "btc-updown-5m" in slug:
-                btc_events.append(event)
+    # 方法1: 用 slug_contains 直接搜索（测试已验证可行）
+    slug_keywords = ["btc-updown-5m", "bitcoin-up-or-down-5-minutes"]
+    for slug_kw in slug_keywords:
+        try:
+            url = f"{GAMMA_API}/events"
+            params = {
+                "limit": limit,
+                "active": "true",
+                "closed": "false",
+                "slug_contains": slug_kw,
+            }
+            resp = requests.get(url, params=params, timeout=10)
+            resp.raise_for_status()
+            events = resp.json()
+            if events:
+                btc_events.extend(events)
+                break  # 找到了就不用试下一个关键词
+        except Exception as e:
+            print(f"[调试] slug '{slug_kw}' 搜索失败: {e}")
+            continue
 
-        return btc_events
-    except Exception as e:
-        print(f"[错误] 获取事件列表失败: {e}")
-        return []
+    # 方法2: 如果方法1没找到，用通用搜索 + 过滤
+    if not btc_events:
+        try:
+            url = f"{GAMMA_API}/events"
+            params = {
+                "limit": 50,
+                "active": "true",
+                "closed": "false",
+            }
+            resp = requests.get(url, params=params, timeout=10)
+            resp.raise_for_status()
+            events = resp.json()
+
+            for event in events:
+                title = event.get("title", "").lower()
+                slug = event.get("slug", "").lower()
+                if ("btc" in title or "bitcoin" in title) and ("5 min" in title or "5min" in title):
+                    btc_events.append(event)
+                elif "btc-updown-5m" in slug or "btc" in slug and "5m" in slug:
+                    btc_events.append(event)
+        except Exception as e:
+            print(f"[错误] 获取事件列表失败: {e}")
+
+    return btc_events
 
 
 def fetch_market_prices(token_id: str) -> Optional[Dict]:
@@ -522,6 +543,9 @@ if __name__ == "__main__":
         analyze_data()
     elif len(sys.argv) > 1 and sys.argv[1] == "test":
         quick_test()
+    elif len(sys.argv) > 1 and sys.argv[1] == "monitor":
+        monitor = BTCMonitor()
+        monitor.run()
     else:
         # 默认先跑测试
         print("提示: 首次运行，先执行 API 测试...\n")
