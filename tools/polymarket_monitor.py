@@ -326,7 +326,15 @@ class BTCMonitor:
                             continue
 
                         # 获取 token IDs (Yes 和 No)
-                        tokens = market.get("clobTokenIds", [])
+                        # clobTokenIds 可能是字符串格式的 JSON 数组，需要解析
+                        tokens_raw = market.get("clobTokenIds", [])
+                        if isinstance(tokens_raw, str):
+                            try:
+                                tokens = json.loads(tokens_raw)
+                            except (json.JSONDecodeError, TypeError):
+                                tokens = []
+                        else:
+                            tokens = tokens_raw
                         if not tokens or len(tokens) < 2:
                             continue
 
