@@ -61,7 +61,7 @@ def fetch_btc_5min_events(limit: int = 10) -> List[Dict]:
     """
     btc_events = []
 
-    # 方法1: 用 slug_contains 直接搜索（测试已验证可行）
+    # 方法1: 用 slug_contains 直接搜索（不过滤 closed，因为 BTC 5分钟事件 closed=true 但子市场仍活跃）
     slug_keywords = ["btc-updown-5m", "bitcoin-up-or-down-5-minutes"]
     for slug_kw in slug_keywords:
         try:
@@ -69,7 +69,6 @@ def fetch_btc_5min_events(limit: int = 10) -> List[Dict]:
             params = {
                 "limit": limit,
                 "active": "true",
-                "closed": "false",
                 "slug_contains": slug_kw,
             }
             resp = requests.get(url, params=params, timeout=10)
